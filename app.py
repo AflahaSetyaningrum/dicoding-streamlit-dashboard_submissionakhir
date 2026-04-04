@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import pickle
 import os
+import pickle
 
 # =========================
 # CONFIG PAGE
@@ -14,31 +14,58 @@ st.set_page_config(
 )
 
 # =========================
-# LOAD DATA
+# LOAD DATA (ANTI ERROR PATH)
 # =========================
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/students.csv")
-    return df
+    base_path = os.path.dirname(__file__)
+
+    # coba beberapa kemungkinan nama file
+    possible_files = [
+        os.path.join(base_path, "data", "students_performance.csv"),
+        os.path.join(base_path, "data", "students.csv"),
+        os.path.join(base_path, "students_performance.csv"),
+        os.path.join(base_path, "students.csv"),
+    ]
+
+    for file in possible_files:
+        if os.path.exists(file):
+            df = pd.read_csv(file)
+            return df
+
+    st.error("Dataset tidak ditemukan. Pastikan file CSV ada di folder project.")
+    st.stop()
 
 df = load_data()
 
 # =========================
-# PREPROCESS (SIMPLE)
+# DEBUG KOLOM (biar aman)
 # =========================
-# Contoh membuat label dropout sederhana (jika belum ada)
+st.sidebar.write("Kolom Dataset:")
+st.sidebar.write(df.columns.tolist())
+
+# =========================
+# DETEKSI KOLOM SCORE OTOMATIS
+# =========================
+score_cols = [col for col in df.columns if "score" in col.lower()]
+
+if len(score_cols) >= 3:
+    df["average_score"] = df[score_cols].mean(axis=1)
+else:
+    st.error("Kolom score tidak ditemukan di dataset!")
+    st.stop()
+
+# =========================
+# BUAT LABEL DROPOUT (JIKA BELUM ADA)
+# =========================
 if "dropout" not in df.columns:
-    df["average_score"] = df[["math score", "reading score", "writing score"]].mean(axis=1)
     df["dropout"] = np.where(df["average_score"] < 60, 1, 0)
 
 # =========================
-# SIDEBAR
+# SIDEBAR MENU
 # =========================
 st.sidebar.title("Menu")
-menu = st.sidebar.radio(
-    "Pilih Halaman",
-    ["Dashboard", "Prediksi Dropout"]
-)
+menu = st.sidebar.radio("Pilih Halaman", ["Dashboard", "Prediksi"])
 
 # =========================
 # DASHBOARD
@@ -46,116 +73,102 @@ menu = st.sidebar.radio(
 if menu == "Dashboard":
     st.title("📊 Dashboard Analisis Dropout Siswa")
 
-    # =========================
     # METRICS
-    # =========================
     col1, col2, col3 = st.columns(3)
 
-    total_siswa = len(df)
-    total_dropout = df["dropout"].sum()
-    dropout_rate = (total_dropout / total_siswa) * 100
+    total = len(df)
+    dropout_total = df["dropout"].sum()
+    dropout_rate = (dropout_total / total) * 100
 
-    col1.metric("Total Siswa", total_siswa)
-    col2.metric("Total Dropout", total_dropout)
+    col1.metric("Total Siswa", total)
+    col2.metric("Total Dropout", int(dropout_total))
     col3.metric("Dropout Rate (%)", f"{dropout_rate:.2f}")
 
     st.markdown("---")
 
-    # =========================
     # DISTRIBUSI DROPOUT
-    # =========================
-    st.subheader("Distribusi Dropout Siswa")
+    st.subheader("Distribusi Dropout")
 
-    dropout_counts = df["dropout"].value_counts()
+    counts = df["dropout"].value_counts()
 
     fig1, ax1 = plt.subplots()
-    ax1.bar(["Tidak Dropout", "Dropout"], dropout_counts.values)
+    ax1.bar(["Tidak Dropout", "Dropout"], counts.values)
     st.pyplot(fig1)
 
-    # =========================
-    # FILTER
-    # =========================
-    st.subheader("Filter Data")
+    # FILTER (jika ada gender)
+    if "gender" in df.columns:
+        st.subheader("Filter")
 
-    gender_filter = st.selectbox("Pilih Gender", ["All"] + list(df["gender"].unique()))
+        gender = st.selectbox("Pilih Gender", ["All"] + list(df["gender"].unique()))
 
-    df_filtered = df.copy()
-    if gender_filter != "All":
-        df_filtered = df_filtered[df_filtered["gender"] == gender_filter]
+        if gender != "All":
+            df_filtered = df[df["gender"] == gender]
+        else:
+            df_filtered = df
+    else:
+        df_filtered = df
 
-    # =========================
-    # ANALISIS NILAI
-    # =========================
+    # SCATTER NILAI
     st.subheader("Analisis Nilai vs Dropout")
 
     fig2, ax2 = plt.subplots()
-    ax2.scatter(df_filtered["math score"], df_filtered["dropout"])
-    ax2.set_xlabel("Math Score")
+    ax2.scatter(df_filtered[score_cols[0]], df_filtered["dropout"])
+    ax2.set_xlabel(score_cols[0])
     ax2.set_ylabel("Dropout")
     st.pyplot(fig2)
 
-    # =========================
     # RATA-RATA NILAI
-    # =========================
-    st.subheader("Rata-rata Nilai Berdasarkan Status")
+    st.subheader("Rata-rata Nilai")
 
-    avg_scores = df.groupby("dropout")[["math score", "reading score", "writing score"]].mean()
+    avg = df.groupby("dropout")[score_cols].mean()
 
     fig3, ax3 = plt.subplots()
-    avg_scores.plot(kind="bar", ax=ax3)
+    avg.plot(kind="bar", ax=ax3)
     st.pyplot(fig3)
 
-    # =========================
-    # FEATURE IMPORTANCE (DUMMY)
-    # =========================
-    st.subheader("Feature Importance (Simulasi)")
+    # FEATURE IMPORTANCE (dummy)
+    st.subheader("Feature Importance")
 
-    features = ["math score", "reading score", "writing score"]
-    importance = [0.4, 0.3, 0.3]
+    importance = np.random.rand(len(score_cols))
 
     fig4, ax4 = plt.subplots()
-    ax4.bar(features, importance)
+    ax4.bar(score_cols, importance)
     st.pyplot(fig4)
-
 
 # =========================
 # PREDIKSI
 # =========================
-elif menu == "Prediksi Dropout":
-    st.title("🤖 Prediksi Dropout Siswa")
+else:
+    st.title("🤖 Prediksi Dropout")
 
-    st.write("Masukkan data siswa:")
+    st.write("Masukkan nilai siswa:")
 
-    # =========================
-    # INPUT USER
-    # =========================
-    gender = st.selectbox("Gender", ["male", "female"])
-    math_score = st.slider("Math Score", 0, 100, 50)
-    reading_score = st.slider("Reading Score", 0, 100, 50)
-    writing_score = st.slider("Writing Score", 0, 100, 50)
+    # INPUT DINAMIS
+    inputs = []
+    for col in score_cols[:3]:
+        val = st.slider(col, 0, 100, 50)
+        inputs.append(val)
 
-    # =========================
-    # LOAD MODEL (OPTIONAL)
-    # =========================
+    # LOAD MODEL (optional)
     model = None
-    if os.path.exists("model/model.pkl"):
-        with open("model/model.pkl", "rb") as f:
+    model_path = os.path.join(os.path.dirname(__file__), "model", "model.pkl")
+
+    if os.path.exists(model_path):
+        with open(model_path, "rb") as f:
             model = pickle.load(f)
 
-    # =========================
     # PREDIKSI
-    # =========================
     if st.button("Prediksi"):
-        input_data = np.array([[math_score, reading_score, writing_score]])
+        data = np.array([inputs])
 
         if model:
-            prediction = model.predict(input_data)[0]
+            pred = model.predict(data)[0]
         else:
-            # fallback rule-based
-            avg = np.mean(input_data)
-            prediction = 1 if avg < 60 else 0
+            # fallback rule
+            avg = np.mean(data)
+            pred = 1 if avg < 60 else 0
 
-        if prediction == 1:
-            st.error("⚠️ Siswa Berpotensi Dropout")
+        if pred == 1:
+            st.error("⚠️ Berpotensi Dropout")
         else:
-            st.success("✅ Siswa Tidak Dropout")
+            st.success("✅ Tidak Dropout")
