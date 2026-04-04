@@ -14,51 +14,55 @@ st.set_page_config(
 )
 
 # =========================
-# LOAD DATA (ANTI ERROR PATH)
+# LOAD DATA
 # =========================
 @st.cache_data
 def load_data():
     base_path = os.path.dirname(__file__)
 
-    # coba beberapa kemungkinan nama file
     possible_files = [
-        os.path.join(base_path, "data", "students_performance.csv"),
         os.path.join(base_path, "data", "students.csv"),
-        os.path.join(base_path, "students_performance.csv"),
         os.path.join(base_path, "students.csv"),
     ]
 
     for file in possible_files:
         if os.path.exists(file):
-            df = pd.read_csv(file)
-            return df
+            return pd.read_csv(file)
 
-    st.error("Dataset tidak ditemukan. Pastikan file CSV ada di folder project.")
+    st.error("Dataset tidak ditemukan!")
     st.stop()
 
 df = load_data()
 
 # =========================
-# DEBUG KOLOM (biar aman)
+# DEBUG KOLOM
 # =========================
 st.sidebar.write("Kolom Dataset:")
 st.sidebar.write(df.columns.tolist())
 
 # =========================
-# DETEKSI KOLOM SCORE OTOMATIS
+# PILIH KOLOM NILAI (KHUSUS DATASET DICODING)
 # =========================
-score_cols = [col for col in df.columns if "score" in col.lower()]
+important_cols = [
+    "Curricular_units_1st_sem_grade",
+    "Curricular_units_2nd_sem_grade",
+    "Admission_grade"
+]
 
-if len(score_cols) >= 3:
+score_cols = [col for col in important_cols if col in df.columns]
+
+if len(score_cols) >= 2:
     df["average_score"] = df[score_cols].mean(axis=1)
 else:
-    st.error("Kolom score tidak ditemukan di dataset!")
+    st.error("Kolom nilai tidak ditemukan di dataset!")
     st.stop()
 
 # =========================
-# BUAT LABEL DROPOUT (JIKA BELUM ADA)
+# TARGET DROPOUT (DATASET DICODING)
 # =========================
-if "dropout" not in df.columns:
+if "Status" in df.columns:
+    df["dropout"] = df["Status"].apply(lambda x: 1 if x == "Dropout" else 0)
+else:
     df["dropout"] = np.where(df["average_score"] < 60, 1, 0)
 
 # =========================
@@ -95,30 +99,17 @@ if menu == "Dashboard":
     ax1.bar(["Tidak Dropout", "Dropout"], counts.values)
     st.pyplot(fig1)
 
-    # FILTER (jika ada gender)
-    if "gender" in df.columns:
-        st.subheader("Filter")
-
-        gender = st.selectbox("Pilih Gender", ["All"] + list(df["gender"].unique()))
-
-        if gender != "All":
-            df_filtered = df[df["gender"] == gender]
-        else:
-            df_filtered = df
-    else:
-        df_filtered = df
-
-    # SCATTER NILAI
+    # ANALISIS NILAI
     st.subheader("Analisis Nilai vs Dropout")
 
     fig2, ax2 = plt.subplots()
-    ax2.scatter(df_filtered[score_cols[0]], df_filtered["dropout"])
-    ax2.set_xlabel(score_cols[0])
+    ax2.scatter(df["average_score"], df["dropout"])
+    ax2.set_xlabel("Average Score")
     ax2.set_ylabel("Dropout")
     st.pyplot(fig2)
 
     # RATA-RATA NILAI
-    st.subheader("Rata-rata Nilai")
+    st.subheader("Rata-rata Nilai Berdasarkan Status")
 
     avg = df.groupby("dropout")[score_cols].mean()
 
@@ -126,7 +117,7 @@ if menu == "Dashboard":
     avg.plot(kind="bar", ax=ax3)
     st.pyplot(fig3)
 
-    # FEATURE IMPORTANCE (dummy)
+    # FEATURE IMPORTANCE (SIMULASI)
     st.subheader("Feature Importance")
 
     importance = np.random.rand(len(score_cols))
@@ -139,17 +130,17 @@ if menu == "Dashboard":
 # PREDIKSI
 # =========================
 else:
-    st.title("🤖 Prediksi Dropout")
+    st.title("🤖 Prediksi Dropout Siswa")
 
-    st.write("Masukkan nilai siswa:")
+    st.write("Masukkan data nilai:")
 
-    # INPUT DINAMIS
+    # INPUT SESUAI DATASET
     inputs = []
-    for col in score_cols[:3]:
-        val = st.slider(col, 0, 100, 50)
+    for col in score_cols:
+        val = st.slider(col, 0, 200, 100)  # karena grade bisa >100
         inputs.append(val)
 
-    # LOAD MODEL (optional)
+    # LOAD MODEL (OPSIONAL)
     model = None
     model_path = os.path.join(os.path.dirname(__file__), "model", "model.pkl")
 
@@ -164,11 +155,10 @@ else:
         if model:
             pred = model.predict(data)[0]
         else:
-            # fallback rule
             avg = np.mean(data)
-            pred = 1 if avg < 60 else 0
+            pred = 1 if avg < 100 else 0  # threshold disesuaikan
 
         if pred == 1:
-            st.error("⚠️ Berpotensi Dropout")
+            st.error("⚠️ Siswa Berpotensi Dropout")
         else:
-            st.success("✅ Tidak Dropout")
+            st.success("✅ Siswa Tidak Dropout")
