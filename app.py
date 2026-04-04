@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# LOAD DATA
+# LOAD DATA (FIX DELIMITER)
 # =========================
 @st.cache_data
 def load_data():
@@ -22,14 +22,17 @@ def load_data():
 
     possible_files = [
         os.path.join(base_path, "data", "students.csv"),
-        os.path.join(base_path, "data", "students_performance.csv"),
         os.path.join(base_path, "students.csv"),
-        os.path.join(base_path, "students_performance.csv"),
     ]
 
     for file in possible_files:
         if os.path.exists(file):
-            return pd.read_csv(file)
+            try:
+                df = pd.read_csv(file)
+            except:
+                df = pd.read_csv(file, delimiter=";")  # fallback
+
+            return df
 
     st.error("Dataset tidak ditemukan!")
     st.stop()
@@ -37,40 +40,57 @@ def load_data():
 df = load_data()
 
 # =========================
-# DEBUG KOLOM
+# DEBUG
 # =========================
 st.sidebar.write("Kolom Dataset:")
 st.sidebar.write(df.columns.tolist())
 
+st.sidebar.write("Preview Data:")
+st.sidebar.write(df.head())
+
 # =========================
-# AMBIL KOLOM NUMERIK OTOMATIS
+# KONVERSI KE NUMERIK (PENTING)
+# =========================
+for col in df.columns:
+    df[col] = pd.to_numeric(df[col], errors='ignore')
+
+# =========================
+# AMBIL KOLOM NUMERIK
 # =========================
 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
-# buang kolom ID kalau ada
+# buang kolom id jika ada
 numeric_cols = [col for col in numeric_cols if "id" not in col.lower()]
 
+# =========================
+# HANDLE JIKA MASIH GAGAL
+# =========================
 if len(numeric_cols) < 2:
-    st.error("Tidak cukup kolom numerik untuk analisis!")
+    st.error("Dataset tidak memiliki cukup kolom numerik.")
+    st.write("Kemungkinan penyebab:")
+    st.write("- Format CSV salah (delimiter)")
+    st.write("- Semua data terbaca sebagai teks")
+    st.write("Solusi: cek file CSV kamu")
+
     st.stop()
 
-# gunakan sebagian kolom numerik
+# =========================
+# PILIH KOLOM
+# =========================
 score_cols = numeric_cols[:3]
 
-# buat rata-rata
 df["average_score"] = df[score_cols].mean(axis=1)
 
 # =========================
-# TARGET DROPOUT
+# TARGET
 # =========================
 if "Status" in df.columns:
     df["dropout"] = df["Status"].apply(lambda x: 1 if x == "Dropout" else 0)
 else:
-    # fallback kalau tidak ada label
     df["dropout"] = np.where(df["average_score"] < df["average_score"].mean(), 1, 0)
 
 # =========================
-# SIDEBAR MENU
+# MENU
 # =========================
 st.sidebar.title("Menu")
 menu = st.sidebar.radio("Pilih Halaman", ["Dashboard", "Prediksi"])
@@ -79,33 +99,26 @@ menu = st.sidebar.radio("Pilih Halaman", ["Dashboard", "Prediksi"])
 # DASHBOARD
 # =========================
 if menu == "Dashboard":
-    st.title("📊 Dashboard Analisis Dropout Siswa")
+    st.title("📊 Dashboard Analisis Dropout")
 
-    # METRICS
     col1, col2, col3 = st.columns(3)
 
     total = len(df)
     dropout_total = df["dropout"].sum()
-    dropout_rate = (dropout_total / total) * 100
+    rate = (dropout_total / total) * 100
 
     col1.metric("Total Siswa", total)
-    col2.metric("Total Dropout", int(dropout_total))
-    col3.metric("Dropout Rate (%)", f"{dropout_rate:.2f}")
+    col2.metric("Dropout", int(dropout_total))
+    col3.metric("Rate (%)", f"{rate:.2f}")
 
     st.markdown("---")
 
     # DISTRIBUSI
-    st.subheader("Distribusi Dropout")
-
-    counts = df["dropout"].value_counts()
-
     fig1, ax1 = plt.subplots()
-    ax1.bar(["Tidak Dropout", "Dropout"], counts.values)
+    ax1.bar(["Tidak", "Dropout"], df["dropout"].value_counts().values)
     st.pyplot(fig1)
 
     # SCATTER
-    st.subheader("Analisis Nilai vs Dropout")
-
     fig2, ax2 = plt.subplots()
     ax2.scatter(df[score_cols[0]], df["dropout"])
     ax2.set_xlabel(score_cols[0])
@@ -113,54 +126,28 @@ if menu == "Dashboard":
     st.pyplot(fig2)
 
     # RATA-RATA
-    st.subheader("Rata-rata Nilai")
-
     avg = df.groupby("dropout")[score_cols].mean()
 
     fig3, ax3 = plt.subplots()
     avg.plot(kind="bar", ax=ax3)
     st.pyplot(fig3)
 
-    # FEATURE IMPORTANCE (dummy)
-    st.subheader("Feature Importance")
-
-    importance = np.random.rand(len(score_cols))
-
-    fig4, ax4 = plt.subplots()
-    ax4.bar(score_cols, importance)
-    st.pyplot(fig4)
-
 # =========================
 # PREDIKSI
 # =========================
 else:
-    st.title("🤖 Prediksi Dropout")
-
-    st.write("Masukkan data:")
+    st.title("🤖 Prediksi")
 
     inputs = []
     for col in score_cols:
         val = st.slider(col, float(df[col].min()), float(df[col].max()), float(df[col].mean()))
         inputs.append(val)
 
-    # LOAD MODEL (optional)
-    model = None
-    model_path = os.path.join(os.path.dirname(__file__), "model", "model.pkl")
-
-    if os.path.exists(model_path):
-        with open(model_path, "rb") as f:
-            model = pickle.load(f)
-
     if st.button("Prediksi"):
-        data = np.array([inputs])
-
-        if model:
-            pred = model.predict(data)[0]
-        else:
-            avg = np.mean(data)
-            pred = 1 if avg < df["average_score"].mean() else 0
+        avg = np.mean(inputs)
+        pred = 1 if avg < df["average_score"].mean() else 0
 
         if pred == 1:
-            st.error("⚠️ Berpotensi Dropout")
+            st.error("⚠️ Dropout")
         else:
             st.success("✅ Tidak Dropout")
