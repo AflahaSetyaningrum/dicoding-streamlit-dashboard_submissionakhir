@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
 import matplotlib.pyplot as plt
+import pickle
+import os
 
 # =========================
-# CONFIG
+# CONFIG PAGE
 # =========================
 st.set_page_config(
     page_title="Dashboard Dropout Siswa",
@@ -17,143 +18,144 @@ st.set_page_config(
 # =========================
 @st.cache_data
 def load_data():
-    return pd.read_csv("data/students.csv")
+    df = pd.read_csv("data/students_performance.csv")
+    return df
 
 df = load_data()
 
 # =========================
-# LOAD MODEL BUNDLE
+# PREPROCESS (SIMPLE)
 # =========================
-@st.cache_resource
-def load_model():
-    return joblib.load("model/model.pkl")
-
-bundle = load_model()
-
-model = bundle["model"]
-scaler = bundle["scaler"]
-label_encoders = bundle["label_encoders"]
-features = bundle["features"]
+# Contoh membuat label dropout sederhana (jika belum ada)
+if "dropout" not in df.columns:
+    df["average_score"] = df[["math score", "reading score", "writing score"]].mean(axis=1)
+    df["dropout"] = np.where(df["average_score"] < 60, 1, 0)
 
 # =========================
-# SIDEBAR FILTER
+# SIDEBAR
 # =========================
-st.sidebar.header("Filter Data")
+st.sidebar.title("Menu")
+menu = st.sidebar.radio(
+    "Pilih Halaman",
+    ["Dashboard", "Prediksi Dropout"]
+)
 
-if 'dropout' in df.columns:
-    selected = st.sidebar.multiselect(
-        "Status Dropout",
-        df['dropout'].unique(),
-        default=df['dropout'].unique()
-    )
-    df_filtered = df[df['dropout'].isin(selected)]
-else:
+# =========================
+# DASHBOARD
+# =========================
+if menu == "Dashboard":
+    st.title("📊 Dashboard Analisis Dropout Siswa")
+
+    # =========================
+    # METRICS
+    # =========================
+    col1, col2, col3 = st.columns(3)
+
+    total_siswa = len(df)
+    total_dropout = df["dropout"].sum()
+    dropout_rate = (total_dropout / total_siswa) * 100
+
+    col1.metric("Total Siswa", total_siswa)
+    col2.metric("Total Dropout", total_dropout)
+    col3.metric("Dropout Rate (%)", f"{dropout_rate:.2f}")
+
+    st.markdown("---")
+
+    # =========================
+    # DISTRIBUSI DROPOUT
+    # =========================
+    st.subheader("Distribusi Dropout Siswa")
+
+    dropout_counts = df["dropout"].value_counts()
+
+    fig1, ax1 = plt.subplots()
+    ax1.bar(["Tidak Dropout", "Dropout"], dropout_counts.values)
+    st.pyplot(fig1)
+
+    # =========================
+    # FILTER
+    # =========================
+    st.subheader("Filter Data")
+
+    gender_filter = st.selectbox("Pilih Gender", ["All"] + list(df["gender"].unique()))
+
     df_filtered = df.copy()
+    if gender_filter != "All":
+        df_filtered = df_filtered[df_filtered["gender"] == gender_filter]
 
-# =========================
-# TITLE
-# =========================
-st.title("📊 Dashboard Monitoring Dropout Siswa")
-st.write("Jaya Jaya Institut")
+    # =========================
+    # ANALISIS NILAI
+    # =========================
+    st.subheader("Analisis Nilai vs Dropout")
 
-# =========================
-# METRICS
-# =========================
-col1, col2 = st.columns(2)
+    fig2, ax2 = plt.subplots()
+    ax2.scatter(df_filtered["math score"], df_filtered["dropout"])
+    ax2.set_xlabel("Math Score")
+    ax2.set_ylabel("Dropout")
+    st.pyplot(fig2)
 
-if 'dropout' in df.columns:
-    col1.metric("Total Siswa", len(df_filtered))
-    col2.metric("Total Dropout", int(df_filtered['dropout'].sum()))
+    # =========================
+    # RATA-RATA NILAI
+    # =========================
+    st.subheader("Rata-rata Nilai Berdasarkan Status")
 
-# =========================
-# DISTRIBUSI DROPOUT
-# =========================
-st.subheader("Distribusi Dropout")
+    avg_scores = df.groupby("dropout")[["math score", "reading score", "writing score"]].mean()
 
-if 'dropout' in df.columns:
-    fig, ax = plt.subplots()
-    df_filtered['dropout'].value_counts().plot(kind='bar', ax=ax)
-    st.pyplot(fig)
+    fig3, ax3 = plt.subplots()
+    avg_scores.plot(kind="bar", ax=ax3)
+    st.pyplot(fig3)
 
-# =========================
-# ANALISIS FITUR
-# =========================
-st.subheader("Analisis Fitur")
+    # =========================
+    # FEATURE IMPORTANCE (DUMMY)
+    # =========================
+    st.subheader("Feature Importance (Simulasi)")
 
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    features = ["math score", "reading score", "writing score"]
+    importance = [0.4, 0.3, 0.3]
 
-selected_feature = st.selectbox("Pilih Fitur", numeric_cols)
+    fig4, ax4 = plt.subplots()
+    ax4.bar(features, importance)
+    st.pyplot(fig4)
 
-if 'dropout' in df.columns:
-    fig, ax = plt.subplots()
-    ax.boxplot([
-        df_filtered[df_filtered['dropout'] == 0][selected_feature],
-        df_filtered[df_filtered['dropout'] == 1][selected_feature]
-    ])
-    ax.set_xticklabels(["Tidak", "Dropout"])
-    st.pyplot(fig)
-
-# =========================
-# FEATURE IMPORTANCE
-# =========================
-st.subheader("Feature Importance")
-
-try:
-    importances = model.feature_importances_
-
-    fi_df = pd.DataFrame({
-        'Feature': features,
-        'Importance': importances
-    }).sort_values(by='Importance', ascending=False)
-
-    fig, ax = plt.subplots()
-    ax.barh(fi_df['Feature'][:10], fi_df['Importance'][:10])
-    ax.invert_yaxis()
-    st.pyplot(fig)
-
-except:
-    st.warning("Feature importance tidak tersedia")
 
 # =========================
 # PREDIKSI
 # =========================
-st.subheader("🎯 Prediksi Dropout")
+elif menu == "Prediksi Dropout":
+    st.title("🤖 Prediksi Dropout Siswa")
 
-input_data = {}
+    st.write("Masukkan data siswa:")
 
-for col in features:
-    if col in label_encoders:
-        input_data[col] = st.selectbox(col, label_encoders[col].classes_)
-    else:
-        input_data[col] = st.number_input(col, value=0.0)
+    # =========================
+    # INPUT USER
+    # =========================
+    gender = st.selectbox("Gender", ["male", "female"])
+    math_score = st.slider("Math Score", 0, 100, 50)
+    reading_score = st.slider("Reading Score", 0, 100, 50)
+    writing_score = st.slider("Writing Score", 0, 100, 50)
 
-input_df = pd.DataFrame([input_data])
+    # =========================
+    # LOAD MODEL (OPTIONAL)
+    # =========================
+    model = None
+    if os.path.exists("model/model.pkl"):
+        with open("model/model.pkl", "rb") as f:
+            model = pickle.load(f)
 
-# =========================
-# PREPROCESS INPUT
-# =========================
-for col in input_df.columns:
-    if col in label_encoders:
-        le = label_encoders[col]
-        input_df[col] = le.transform(input_df[col])
+    # =========================
+    # PREDIKSI
+    # =========================
+    if st.button("Prediksi"):
+        input_data = np.array([[math_score, reading_score, writing_score]])
 
-input_df = input_df[features]
+        if model:
+            prediction = model.predict(input_data)[0]
+        else:
+            # fallback rule-based
+            avg = np.mean(input_data)
+            prediction = 1 if avg < 60 else 0
 
-input_scaled = scaler.transform(input_df)
-
-# =========================
-# PREDIKSI BUTTON
-# =========================
-if st.button("Prediksi"):
-    result = model.predict(input_scaled)
-
-    if result[0] == 1:
-        st.error("⚠️ Berpotensi Dropout")
-    else:
-        st.success("✅ Tidak Dropout")
-
-# =========================
-# FOOTER
-# =========================
-st.markdown("---")
-st.caption("Proyek Akhir Dicoding")
+        if prediction == 1:
+            st.error("⚠️ Siswa Berpotensi Dropout")
+        else:
+            st.success("✅ Siswa Tidak Dropout")
