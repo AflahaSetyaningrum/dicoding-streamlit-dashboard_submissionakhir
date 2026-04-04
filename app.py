@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
+import joblib
 import matplotlib.pyplot as plt
 
 # =========================
@@ -26,8 +26,7 @@ df = load_data()
 # =========================
 @st.cache_resource
 def load_model():
-    with open("model/model.pkl", "rb") as f:
-        return pickle.load(f)
+    return joblib.load("model/model.pkl")
 
 bundle = load_model()
 
