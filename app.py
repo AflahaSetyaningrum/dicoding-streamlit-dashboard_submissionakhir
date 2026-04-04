@@ -22,7 +22,9 @@ def load_data():
 
     possible_files = [
         os.path.join(base_path, "data", "students.csv"),
+        os.path.join(base_path, "data", "students_performance.csv"),
         os.path.join(base_path, "students.csv"),
+        os.path.join(base_path, "students_performance.csv"),
     ]
 
     for file in possible_files:
@@ -41,29 +43,31 @@ st.sidebar.write("Kolom Dataset:")
 st.sidebar.write(df.columns.tolist())
 
 # =========================
-# PILIH KOLOM NILAI (KHUSUS DATASET DICODING)
+# AMBIL KOLOM NUMERIK OTOMATIS
 # =========================
-important_cols = [
-    "Curricular_units_1st_sem_grade",
-    "Curricular_units_2nd_sem_grade",
-    "Admission_grade"
-]
+numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
-score_cols = [col for col in important_cols if col in df.columns]
+# buang kolom ID kalau ada
+numeric_cols = [col for col in numeric_cols if "id" not in col.lower()]
 
-if len(score_cols) >= 2:
-    df["average_score"] = df[score_cols].mean(axis=1)
-else:
-    st.error("Kolom nilai tidak ditemukan di dataset!")
+if len(numeric_cols) < 2:
+    st.error("Tidak cukup kolom numerik untuk analisis!")
     st.stop()
 
+# gunakan sebagian kolom numerik
+score_cols = numeric_cols[:3]
+
+# buat rata-rata
+df["average_score"] = df[score_cols].mean(axis=1)
+
 # =========================
-# TARGET DROPOUT (DATASET DICODING)
+# TARGET DROPOUT
 # =========================
 if "Status" in df.columns:
     df["dropout"] = df["Status"].apply(lambda x: 1 if x == "Dropout" else 0)
 else:
-    df["dropout"] = np.where(df["average_score"] < 60, 1, 0)
+    # fallback kalau tidak ada label
+    df["dropout"] = np.where(df["average_score"] < df["average_score"].mean(), 1, 0)
 
 # =========================
 # SIDEBAR MENU
@@ -90,7 +94,7 @@ if menu == "Dashboard":
 
     st.markdown("---")
 
-    # DISTRIBUSI DROPOUT
+    # DISTRIBUSI
     st.subheader("Distribusi Dropout")
 
     counts = df["dropout"].value_counts()
@@ -99,17 +103,17 @@ if menu == "Dashboard":
     ax1.bar(["Tidak Dropout", "Dropout"], counts.values)
     st.pyplot(fig1)
 
-    # ANALISIS NILAI
+    # SCATTER
     st.subheader("Analisis Nilai vs Dropout")
 
     fig2, ax2 = plt.subplots()
-    ax2.scatter(df["average_score"], df["dropout"])
-    ax2.set_xlabel("Average Score")
+    ax2.scatter(df[score_cols[0]], df["dropout"])
+    ax2.set_xlabel(score_cols[0])
     ax2.set_ylabel("Dropout")
     st.pyplot(fig2)
 
-    # RATA-RATA NILAI
-    st.subheader("Rata-rata Nilai Berdasarkan Status")
+    # RATA-RATA
+    st.subheader("Rata-rata Nilai")
 
     avg = df.groupby("dropout")[score_cols].mean()
 
@@ -117,7 +121,7 @@ if menu == "Dashboard":
     avg.plot(kind="bar", ax=ax3)
     st.pyplot(fig3)
 
-    # FEATURE IMPORTANCE (SIMULASI)
+    # FEATURE IMPORTANCE (dummy)
     st.subheader("Feature Importance")
 
     importance = np.random.rand(len(score_cols))
@@ -130,17 +134,16 @@ if menu == "Dashboard":
 # PREDIKSI
 # =========================
 else:
-    st.title("🤖 Prediksi Dropout Siswa")
+    st.title("🤖 Prediksi Dropout")
 
-    st.write("Masukkan data nilai:")
+    st.write("Masukkan data:")
 
-    # INPUT SESUAI DATASET
     inputs = []
     for col in score_cols:
-        val = st.slider(col, 0, 200, 100)  # karena grade bisa >100
+        val = st.slider(col, float(df[col].min()), float(df[col].max()), float(df[col].mean()))
         inputs.append(val)
 
-    # LOAD MODEL (OPSIONAL)
+    # LOAD MODEL (optional)
     model = None
     model_path = os.path.join(os.path.dirname(__file__), "model", "model.pkl")
 
@@ -148,7 +151,6 @@ else:
         with open(model_path, "rb") as f:
             model = pickle.load(f)
 
-    # PREDIKSI
     if st.button("Prediksi"):
         data = np.array([inputs])
 
@@ -156,9 +158,9 @@ else:
             pred = model.predict(data)[0]
         else:
             avg = np.mean(data)
-            pred = 1 if avg < 100 else 0  # threshold disesuaikan
+            pred = 1 if avg < df["average_score"].mean() else 0
 
         if pred == 1:
-            st.error("⚠️ Siswa Berpotensi Dropout")
+            st.error("⚠️ Berpotensi Dropout")
         else:
-            st.success("✅ Siswa Tidak Dropout")
+            st.success("✅ Tidak Dropout")
