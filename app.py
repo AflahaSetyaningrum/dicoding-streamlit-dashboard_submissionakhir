@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # =========================
-# LOAD DATA (ANTI ERROR)
+# LOAD DATA
 # =========================
 @st.cache_data
 def load_data():
@@ -31,8 +31,7 @@ def load_data():
             try:
                 df = pd.read_csv(file)
             except:
-                df = pd.read_csv(file, delimiter=";")  # fallback delimiter
-
+                df = pd.read_csv(file, delimiter=";")
             return df
 
     st.error("❌ Dataset tidak ditemukan")
@@ -41,34 +40,38 @@ def load_data():
 df = load_data()
 
 # =========================
-# DEBUG (WAJIB UNTUK CEK)
+# DEBUG
 # =========================
-st.sidebar.write("📌 Kolom Dataset:")
+st.sidebar.write("Kolom Dataset:")
 st.sidebar.write(df.columns.tolist())
 
-# =========================
-# KONVERSI NUMERIK (FIX PANDAS)
-# =========================
-for col in df.columns:
-    df[col] = pd.to_numeric(df[col], errors='coerce')
-
-# hapus NaN
-df = df.dropna()
+st.sidebar.write("Tipe Data:")
+st.sidebar.write(df.dtypes)
 
 # =========================
-# AMBIL KOLOM NUMERIK
+# AMBIL KOLOM NUMERIK SAJA (TANPA CONVERT PAKSA)
 # =========================
 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
-# buang kolom id
+# buang kolom id kalau ada
 numeric_cols = [col for col in numeric_cols if "id" not in col.lower()]
 
-# fallback jika masih kosong
+# =========================
+# HANDLE JIKA KOSONG
+# =========================
 if len(numeric_cols) < 2:
-    st.error("❌ Dataset tidak memiliki cukup kolom numerik")
+    st.error("❌ Tidak ada kolom numerik terbaca")
+
+    st.write("Kemungkinan penyebab:")
+    st.write("- Dataset terbaca sebagai teks semua")
+    st.write("- Delimiter CSV salah (harusnya ';')")
+    st.write("- Format file tidak sesuai")
+
     st.stop()
 
-# pilih 3 kolom pertama
+# =========================
+# PILIH KOLOM
+# =========================
 score_cols = numeric_cols[:3]
 
 # =========================
@@ -87,7 +90,7 @@ else:
     )
 
 # =========================
-# SIDEBAR
+# MENU
 # =========================
 st.sidebar.title("Menu")
 menu = st.sidebar.radio("Pilih Menu", ["Dashboard", "Prediksi"])
@@ -118,7 +121,7 @@ if menu == "Dashboard":
     st.pyplot(fig1)
 
     # SCATTER
-    st.subheader("Analisis Nilai vs Dropout")
+    st.subheader("Analisis")
 
     fig2, ax2 = plt.subplots()
     ax2.scatter(df[score_cols[0]], df["dropout"])
@@ -135,22 +138,11 @@ if menu == "Dashboard":
     avg.plot(kind="bar", ax=ax3)
     st.pyplot(fig3)
 
-    # FEATURE IMPORTANCE (dummy)
-    st.subheader("Feature Importance")
-
-    importance = np.random.rand(len(score_cols))
-
-    fig4, ax4 = plt.subplots()
-    ax4.bar(score_cols, importance)
-    st.pyplot(fig4)
-
 # =========================
 # PREDIKSI
 # =========================
 else:
     st.title("🤖 Prediksi Dropout")
-
-    st.write("Masukkan data:")
 
     inputs = []
     for col in score_cols:
