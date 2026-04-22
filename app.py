@@ -439,23 +439,22 @@ if page == "📊 Dashboard":
             plt.close()
 
         # Feature Importance
-        st.markdown('<div class="section-header">Top 15 Faktor Paling Berpengaruh terhadap Dropout (Model ML)</div>', unsafe_allow_html=True)
-        importances = pd.Series(model.feature_importances_, index=feature_columns).nlargest(15)
+        importances = pd.Series(model.feature_importances_, index=feature_columns).sort_values()
         fig, ax = plt.subplots(figsize=(9, 5))
-        colors_bar = [C_DROPOUT if i < 5 else '#3b82f6' if i < 10 else '#94a3b8' for i in range(len(importances))]
+        colors_bar = ['#3b82f6' if i >= 5 else C_DROPOUT for i in range(len(importances))]
         bars = ax.barh(importances.index[::-1], importances.values[::-1],
-                       color=colors_bar[::-1], edgecolor='white', linewidth=1)
+                    color=colors_bar[::-1], edgecolor='white', linewidth=1)
         ax.set_xlabel('Importance Score', fontsize=9, color='#64748b')
         ax.spines['bottom'].set_color('#e2e8f0')
         for bar, val in zip(bars, importances.values[::-1]):
             ax.text(val + 0.001, bar.get_y() + bar.get_height()/2,
                     f'{val:.3f}', va='center', fontsize=8, color='#475569')
         legend_patches = [
-            mpatches.Patch(color=C_DROPOUT, label='Top 1–5'),
-            mpatches.Patch(color='#3b82f6', label='Top 6–10'),
-            mpatches.Patch(color='#94a3b8', label='Top 11–15'),
+            mpatches.Patch(color=C_DROPOUT, label='Top 5'),
+            mpatches.Patch(color='#3b82f6', label='Bottom 5'),
         ]
         ax.legend(handles=legend_patches, frameon=False, fontsize=8, loc='lower right')
+
         st.pyplot(fig, use_container_width=True)
         plt.close()
 
@@ -494,10 +493,7 @@ else:
 
         if predict_btn:
             # Build input dengan semua feature_columns
-            input_dict = {col: 0 for col in feature_columns}
-
-            # Isi nilai yang tersedia
-            mapping = {
+            input_dict = {
                 'Age_at_enrollment': age,
                 'Gender': gender,
                 'Scholarship_holder': scholarship,
@@ -508,10 +504,7 @@ else:
                 'Curricular_units_1st_sem_approved': approved_1,
                 'Curricular_units_2nd_sem_approved': approved_2,
                 'Curricular_units_1st_sem_enrolled': enrolled_1,
-            }
-            for k, v in mapping.items():
-                if k in input_dict:
-                    input_dict[k] = v
+    }
 
             input_df = pd.DataFrame([input_dict])[feature_columns]
             input_scaled = scaler.transform(input_df)
