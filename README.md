@@ -23,7 +23,7 @@ Jaya Jaya Institut merupakan institusi pendidikan yang telah berdiri sejak tahun
 ### Persiapan
 
 Sumber data:
-Dataset Students Performance (dataset yang disediakan oleh Dicoding: 
+Dataset Students Performance (dataset yang disediakan oleh Dicoding:
 
 [student perfomance](https://github.com/dicodingacademy/dicoding_dataset/tree/main/students_performance)
 
@@ -66,8 +66,8 @@ Langkah menjalankan proyek:
    ```
    jupyter notebook notebook.ipynb
    ```
-
 6. Menjalankan aplikasi Streamlit
+
    ```
    streamlit run app.py
    ```
@@ -114,6 +114,16 @@ Cara Menggunakan:
 1. Masukkan data siswa pada form input
 2. Klik tombol Prediksi
 3. Sistem akan menampilkan hasil prediksi dropout
+
+## Link Github
+
+[dicoding-streamlit-dashboard_submissionakhir](https://github.com/AflahaSetyaningrum/dicoding-streamlit-dashboard_submissionakhir)
+
+## Akses Online (Live Demo)
+
+Anda juga bisa mengakses dashboard secara langsung melalui link berikut tanpa perlu instalasi:
+
+[Dicoding Dashboard - Live Demo](https://dicoding-app-dashboard-submissionakhir.streamlit.app/)
 
 ## Conclusion
 
